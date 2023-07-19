@@ -75,7 +75,7 @@ object ScalaRecap extends App {
   // method notation
   val alice = Person("Alice", 23)
   val lamborghini = new Supercar
-  alice drives lamborghini // <-- infix notation
+  alice drives lamborghini // <-- infix notation is equivalent ot alice.drives(lamborghini)
 
   // generics
   class MySet[+T]
@@ -167,10 +167,10 @@ object ScalaRecap extends App {
 
   // use case 2: implicit conversions
   implicit class MyRichInt(number: Int) {
-    def isPositive = number > 0
+    def isPositive: Boolean = number > 0
   }
 
-  val oneSign = 1.isPositive
+  val oneSign: Boolean = 1.isPositive
   // equivalent with new MyRichInt(1).isPositive
   // the auto-conversion is done at compile time
 
