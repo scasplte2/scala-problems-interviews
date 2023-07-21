@@ -1,6 +1,7 @@
 package com.rockthejvm.lists
 
 import scala.annotation.tailrec
+import scala.jdk.Accumulator
 
 // Our learning list
 sealed abstract class RList[+T] {
@@ -9,8 +10,8 @@ sealed abstract class RList[+T] {
   def isEmpty: Boolean
   def ::[S >: T](elem: S): RList[S] = new ::(elem, this)
 
-  // for a more functional appraoch
-  // def headOption: Option[T] // more functional
+  // for a more functional approach
+  // def headOption: Option[T]
 
   /**
     * Easy problems
@@ -44,6 +45,14 @@ sealed abstract class RList[+T] {
 
   // duplicate the elements of a list a given number of times
   def duplicateEach(k: Int): RList[T]
+
+  // cycle elements a number of positions to the left
+  def rotate(k: Int): RList[T]
+
+  // random sampling of K elements into a new list
+  // K can be arbitrary (smaller or larger than list length)
+  // elements do not have to be unique
+  def sample(k: Int): RList[T]
 }
 
 case object RNil extends RList[Nothing] {
@@ -62,6 +71,8 @@ case object RNil extends RList[Nothing] {
   override def filter(f: Nothing => Boolean): RList[Nothing] = RNil
   override def rle: RList[(Nothing, Int)] = RNil
   override def duplicateEach(k: Int): RList[Nothing] = RNil
+  override def rotate(k: Int): RList[Nothing] = RNil
+  override def sample(k: Int): RList[Nothing] = RNil
 }
 
 case class ::[+T](head: T, tail: RList[T]) extends RList[T] {
@@ -202,13 +213,42 @@ case class ::[+T](head: T, tail: RList[T]) extends RList[T] {
     -- ans O(M^2)
     problematic since it takes too long, will return too
      */
+//    @tailrec
+//    def flatMapTailrec(remaining: RList[T], result: RList[S]): RList[S] = {
+//      if (remaining.isEmpty) result.reverse
+//      else flatMapTailrec(remaining.tail, f(remaining.head).reverse ++ result)
+//    }
+//    flatMapTailrec(this, RNil)
+
+    /*
+    [1,2,3].flatMap(x => [x, 2 * x]) = flatMapTailrec_v2([3,2,1], [])
+    = flatMapTailrec([2,1], [3,6])
+    = flatMapTailrec([1], [2,4] ++ [3,6])
+    = flatMapTailrec([], [1,2] ++ [2,4,3,6]
+    = [1,2,2,4,3,6]
+     */
+
+//    // my attempt
+//    def flatMapTailrec_v3(): RList[S] = {
+//      val accumulator = this.map(f) // get all the results of applying f
+//      concatenateAll(accumulator, RNil, RNil) // concatenate into one big list
+//    }
+//    flatMapTailrec_v3()
+//
     @tailrec
-    def flatMapTailrec(remaining: RList[T], result: RList[S]): RList[S] = {
-      if (remaining.isEmpty) result.reverse
-      else flatMapTailrec(remaining.tail, f(remaining.head).reverse ++ result)
+    def flatMapTailrec_v2(remaining: RList[T], accumulator: RList[RList[S]]): RList[S] = {
+      if (remaining.isEmpty) concatenateAll(accumulator, RNil, RNil)
+      else flatMapTailrec_v2(remaining.tail, f(remaining.head).reverse :: accumulator)
     }
 
-    flatMapTailrec(this, RNil)
+    @tailrec
+    def concatenateAll(remaining: RList[RList[S]], current: RList[S], result: RList[S]): RList[S] = {
+      if (remaining.isEmpty && current.isEmpty) result
+      else if (current.isEmpty) concatenateAll(remaining.tail, remaining.head, result)
+      else concatenateAll(remaining, current.tail, current.head :: result)
+    }
+
+    flatMapTailrec_v2(this, RNil :: RNil)
   }
 
   override def filter(f: T => Boolean): RList[T] = {
@@ -264,6 +304,56 @@ case class ::[+T](head: T, tail: RList[T]) extends RList[T] {
 
     duplicateEachTailrec(this, 1, RNil)
   }
+
+  override def rotate(k: Int): RList[T] = {
+    /*
+    [1,2,3,4].rotate(2) = rotateTailrec([1,2,3,4], [], 6)
+    = rotateTailrec([2,3,4], [1], 5)
+    = rotateTailrec([3,4], [2,1], 4)
+    = rotateTailrec([4], [3,2,1], 3)
+    = rotateTailrec([], [4,3,2,1], 2)
+    = rotateTailrec([1,2,3,4], [], 2)
+    = rotateTailrec([2,3,4], [1], 1)
+    = rotateTailrec([3,4], [2,1], 0)
+    = [3,4] ++ [2,1].reverse
+    = [3,4,1,2]
+
+    Complexity: O(max(N, K))
+     */
+
+    @tailrec
+    def rotateTailrec(remaining: RList[T], accumulator: RList[T], iterations: Int): RList[T] = {
+      if (remaining.isEmpty && iterations == 0) this // terminate if k is some multiple of the list length
+      else if (iterations == 0) remaining ++ accumulator.reverse // terminate if k is less then the list length
+      else if (remaining.isEmpty) rotateTailrec(this, RNil, iterations) // continue if k > length
+      else rotateTailrec(remaining.tail, remaining.head :: accumulator, iterations - 1)
+    }
+
+    rotateTailrec(this, RNil, k)
+  }
+
+  override def sample(k: Int): RList[T] = {
+    val random = new scala.util.Random(System.currentTimeMillis())
+    val length = this.length
+
+    // Complexity - O(N * K)
+    @tailrec
+    def sampleTailrec(iteration: Int, accumulator: RList[T]): RList[T] = {
+      if (iteration == k) accumulator
+      else sampleTailrec(
+        iteration + 1,
+        this.apply(random.nextInt(length)) :: accumulator
+      )
+    }
+
+    // a second method (still tail recursive) for sampling
+    val sample_v2: RList[T] =
+      RList.from(1 to k).map(_ => this.apply(random.nextInt(length)))
+
+    if (k < 0) RNil
+    //else sampleTailrec(0, RNil)
+    else sample_v2
+  }
 }
 
 object RList {
@@ -288,6 +378,7 @@ object RList {
 object ListProblems extends App {
 
   val aSmallList = ::(1, ::(2, ::(3, RNil)))
+  val aLargeList = RList.from(1 to 10000)
 
   def testEasy(): Unit = {
     val aSmallList_2 = 1 :: 2 :: 3 :: RNil // RNil.::(3).::(2).::(1)
@@ -313,12 +404,27 @@ object ListProblems extends App {
     println(s"Test flatMap ${aSmallList.flatMap(i => aSmallList.map(_ * i))}")
     println(s"Test filter to remove evens ${RList.from(1 to 10).filter(i => (i % 2) == 1)}")
   }
+//  testEasy()
 
   def testMedium(): Unit = {
     println(s"Test of RLE on [1,1,2,2,3] -> ${(1 :: 1 :: 2 :: 2 :: 3 :: RNil).rle}")
-    println(s"DuplicateEach on [1,2,3] -> ${aSmallList.duplicateEach(3)}")
+    println(s"\nDuplicateEach on [1,2,3] -> ${aSmallList.duplicateEach(3)}")
+    println(s"\nRotate by 1 on [1,2,3,4] -> ${(1 :: 2 :: 3 :: 4 :: RNil).rotate(1)}")
+    println(s"Rotate by 5 on [1,2,3,4] -> ${(1 :: 2 :: 3 :: 4 :: RNil).rotate(5)}")
+    println(s"Rotate by 3 on [1,2,3,4] -> ${(1 :: 2 :: 3 :: 4 :: RNil).rotate(3)}")
+    println(s"Rotate by 7 on [1,2,3,4] -> ${(1 :: 2 :: 3 :: 4 :: RNil).rotate(7)}")
+    println(s"Rotate by 4 on [1,2,3,4] -> ${(1 :: 2 :: 3 :: 4 :: RNil).rotate(4)}")
+    println(s"Rotate by 8 on [1,2,3,4] -> ${(1 :: 2 :: 3 :: 4 :: RNil).rotate(8)}")
+    println(s"\nSample 3 from [1,2,3,4] -> ${(1 :: 2 :: 3 :: 4 :: RNil).sample(3)}")
+    println(s"\nFlatmap_v2 on [1,2,3] -> ${RList.from(1 to 3).flatMap(x => x :: 2*x :: RNil)}")
+
+    val time = System.currentTimeMillis()
+    aLargeList.flatMap(x => x :: 2*x :: RNil)
+    println(s"time taken ${System.currentTimeMillis() - time}")
   }
   testMedium()
+
+
 
 
 }
