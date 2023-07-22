@@ -1,7 +1,6 @@
 package com.rockthejvm.lists
 
 import scala.annotation.tailrec
-import scala.jdk.Accumulator
 
 // Our learning list
 sealed abstract class RList[+T] {
@@ -53,6 +52,15 @@ sealed abstract class RList[+T] {
   // K can be arbitrary (smaller or larger than list length)
   // elements do not have to be unique
   def sample(k: Int): RList[T]
+
+  /*
+    Hard problems
+   */
+  // sorting, given a comparison function between two elements, return a sorted list
+  // insertion sort, take each elem in the list and insert it in a sorted fashion to the output
+  def insertionSort[S >: T](ordering: Ordering[S]): RList[S]
+  // split the list in half, sort each half recursively, then merge each half
+  def mergeSort[S >: T](ordering: Ordering[S]): RList[S]
 }
 
 case object RNil extends RList[Nothing] {
@@ -73,6 +81,8 @@ case object RNil extends RList[Nothing] {
   override def duplicateEach(k: Int): RList[Nothing] = RNil
   override def rotate(k: Int): RList[Nothing] = RNil
   override def sample(k: Int): RList[Nothing] = RNil
+  override def insertionSort[S >: Nothing](ordering: Ordering[S]): RList[S] = RNil
+  override def mergeSort[S >: Nothing](ordering: Ordering[S]): RList[S] = RNil
 }
 
 case class ::[+T](head: T, tail: RList[T]) extends RList[T] {
@@ -354,6 +364,93 @@ case class ::[+T](head: T, tail: RList[T]) extends RList[T] {
     //else sampleTailrec(0, RNil)
     else sample_v2
   }
+
+  override def insertionSort[S >: T](ordering: Ordering[S]): RList[S] = {
+    /* Daniel impl
+    [5,1,3].sorted = insertSortTailrec([5,1,3], [])
+    = insertSortTailrec([1,3], [5])
+    = insertSortTailrec([3], [1,5])
+    = insertSortTailrec([], [1,3,5])
+     */
+
+    @tailrec
+    def insertSortTailrec(remaining: RList[T], acc: RList[S]): RList[S] = {
+      if (remaining.isEmpty) acc
+      else insertSortTailrec(remaining.tail, insertSorted(remaining.head, RNil, acc))
+    }
+
+    /*
+    insertSorted(5, [], [1,3])
+    = insertSorted(5, [1], [3])
+    = insertSorted(5, [1,3], [])
+     */
+    @tailrec
+    def insertSorted(elem: T, before: RList[S], after: RList[S]): RList[S] = {
+      if (after.isEmpty) before.reverse ++ (elem :: RNil)
+      else if (ordering.lteq(elem, after.head)) before.reverse ++ (elem :: after)
+      else insertSorted(elem, after.head :: before, after.tail)
+    }
+
+    /* James impl
+    [5,1,3].sorted = sortedTailrec([1,3], [], 5, [])
+    = sortedTailrec([3], [], 1, [5])
+    = sortedTailrec([], [], 1, [3,5])
+    = sortedTailrec([5], [1], 3, [])
+    = sortedTailrec([], [1], 3, [5])
+    = sortedTailrec([], [3,1], 5, [])
+    = (5 :: [3,1]).reverse = [1,3,5]
+
+    [three, five, one].sorted = sortedTailrec([five, one], [], three, [])
+    = sortedTailrec([one], [], [five], [three])
+    = sortedTailrec([], [], one, [five, three])
+    = sortedTailrec([three], [one], five, [])
+    = sortedTailrec([], [one], five, [three])
+    = sortedTailrec([], [five, one], three, [])
+    =  (three :: [five, one]).reverse = [one, five, three]
+     */
+
+    @tailrec
+    def sortedTailrec(remaining: RList[S], accumulator: RList[S], current: S, buffer: RList[S]): RList[S] = {
+      if (remaining.isEmpty && buffer.isEmpty) (current :: accumulator).reverse
+      else if (remaining.isEmpty) sortedTailrec(buffer.tail, current :: accumulator, buffer.head, RNil)
+      else if (ordering.equiv(remaining.head, current)) sortedTailrec(remaining.tail, current :: accumulator, current, RNil)
+      else if (ordering.lt(remaining.head, current)) sortedTailrec(remaining.tail, accumulator, remaining.head, current :: buffer)
+      else sortedTailrec(remaining.tail, accumulator, current, remaining.head :: buffer)
+    }
+
+//    sortedTailrec(this.tail, RNil, this.head, RNil)
+    insertSortTailrec(this, RNil)
+  }
+
+  override def mergeSort[S >: T](ordering: Ordering[S]): RList[S] = {
+    /*
+    [6,2,8,3,9,1,5].mergeSort
+    [6,2,8,3] & [9,1,5]
+    [6,2] & [8,3] & [9,1] & [5]
+    [2,6] & [3,8] & [1,9] & [5]
+    [2,3,6,8] & [1,5,9]
+    [1,2,3,5,6,8,9]
+     */
+
+    @tailrec
+    def splitList(left: RList[S], right: RList[S]): (RList[S], RList[S]) = {
+      val leftLength = left.length
+      val rightLength = right.length
+
+      if (leftLength == rightLength || leftLength == rightLength + 1) (left, right)
+      else splitList(right.head :: left, right.tail)
+    }
+
+    def mergeSortTailRec(left: RList[S], right: RList[S]): RList[S] = {
+      val leftLength = left.length
+      val rightLength = right.length
+
+      if (leftLength <= 1 && rightLength <= 1) ordering
+
+    }
+
+
+  }
 }
 
 object RList {
@@ -369,7 +466,6 @@ object RList {
 }
 
 
-
 // review of covariance
 //class Animal
 //class Dog extends Animal
@@ -379,6 +475,8 @@ object ListProblems extends App {
 
   val aSmallList = ::(1, ::(2, ::(3, RNil)))
   val aLargeList = RList.from(1 to 10000)
+  val unsortedIntList = 5 :: 1 :: 3 :: RNil
+  val unsortedStringList = "three" :: "five" :: "one" :: RNil
 
   def testEasy(): Unit = {
     val aSmallList_2 = 1 :: 2 :: 3 :: RNil // RNil.::(3).::(2).::(1)
@@ -422,8 +520,16 @@ object ListProblems extends App {
     aLargeList.flatMap(x => x :: 2*x :: RNil)
     println(s"time taken ${System.currentTimeMillis() - time}")
   }
-  testMedium()
+//  testMedium()
 
+  def testHard(): Unit = {
+    val strOrdering: Ordering[String] = Ordering.fromLessThan((x: String, y: String) => x.length < y.length)
+
+    println(s"sorting an Int list given an Ordering[Int] -> ${unsortedIntList.insertionSort(Ordering[Int])}")
+    println(s"sorting a random sample from 1 to 10000 -> ${aLargeList.sample(10).insertionSort(Ordering[Int])}")
+    println(s"sorting a String list given an Ordering[String] -> ${unsortedStringList.insertionSort(strOrdering)}")
+  }
+  testHard()
 
 
 
