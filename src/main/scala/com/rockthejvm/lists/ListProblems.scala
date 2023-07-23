@@ -59,8 +59,15 @@ sealed abstract class RList[+T] {
   // sorting, given a comparison function between two elements, return a sorted list
   // insertion sort, take each elem in the list and insert it in a sorted fashion to the output
   def insertionSort[S >: T](ordering: Ordering[S]): RList[S]
+
   // split the list in half, sort each half recursively, then merge each half
   def mergeSort[S >: T](ordering: Ordering[S]): RList[S]
+
+  // quick sort, take an arbitrary elem (called pivot)
+  // separate all elements into list that are larger and smaller than pivot
+  // sort lists recursively
+  // recombine the result
+  def quickSort[S >: T](ordering: Ordering[S]): RList[S]
 }
 
 case object RNil extends RList[Nothing] {
@@ -83,6 +90,7 @@ case object RNil extends RList[Nothing] {
   override def sample(k: Int): RList[Nothing] = RNil
   override def insertionSort[S >: Nothing](ordering: Ordering[S]): RList[S] = RNil
   override def mergeSort[S >: Nothing](ordering: Ordering[S]): RList[S] = RNil
+  override def quickSort[S >: Nothing](ordering: Ordering[S]): RList[S] = RNil
 }
 
 case class ::[+T](head: T, tail: RList[T]) extends RList[T] {
@@ -430,27 +438,102 @@ case class ::[+T](head: T, tail: RList[T]) extends RList[T] {
     [2,6] & [3,8] & [1,9] & [5]
     [2,3,6,8] & [1,5,9]
     [1,2,3,5,6,8,9]
+
+    [6,2,8,3,9,1,5].mergeSort
+    = ([6,2,8,3], [9,1,5])
+    = ( ([6,2], [8,3]), ([9,1], [5]) )
+    = ((([6], [2]), ([8], [3])), (([9], [1]), ([5], [])))
      */
 
+    // My attempt
+//    @tailrec
+//    def splitList(left: RList[S], right: RList[S]): RList[(RList[S], RList[S])] = {
+//      val leftLength = left.length
+//      val rightLength = right.length
+//
+//      if (leftLength == rightLength || leftLength == rightLength + 1) (left, right)
+//      else splitList(
+//    }
+//
+//    def mergeSortTailRec(left: RList[S], right: RList[S]): RList[S] = {
+//      val leftLength = left.length
+//      val rightLength = right.length
+//
+//      if (leftLength == 1 && rightLength == 0) left
+//      else if (leftLength == 1 && rightLength == 1) {
+//        if (ordering.lt(left.head, right.head)) left.head :: right
+//        else right.head :: left
+//      }
+//    }
+//
+//    RNil
+
+    // start of Daniel's solution
+
+    /*
+    merge([6], [], [])
+    = [6]
+
+    merge([1], [5], [])
+    = [1,5]
+
+    merge([1,5], [3,4], [])
+    = merge([5], [3,4], [1])
+    = merge([5], [4], [1,3])
+    = merge([5], [], [1,3,4])
+    = merge([], [], [1,3,4,5])
+     */
     @tailrec
-    def splitList(left: RList[S], right: RList[S]): (RList[S], RList[S]) = {
-      val leftLength = left.length
-      val rightLength = right.length
+    def merge(left: RList[S], right: RList[S], accumulator: RList[S]): RList[S] = {
+      // my guess given the signature
+//      if (left.isEmpty && right.isEmpty) accumulator.reverse
+//      else if (left.isEmpty) merge(left, right.tail, right.head :: accumulator)
+//      else if (right.isEmpty)
+//        merge(left.tail, right, left.head :: accumulator)
+//      else if (ordering.lteq(right.head, left.head))
+//        merge(left, right.tail, right.head :: accumulator)
+//      else merge(left.tail, right, left.head :: accumulator)
 
-      if (leftLength == rightLength || leftLength == rightLength + 1) (left, right)
-      else splitList(right.head :: left, right.tail)
+      // his solution
+      if (left.isEmpty) accumulator.reverse ++ right
+      else if (right.isEmpty) accumulator.reverse ++ left
+      else if (ordering.lteq(left.head, right.head)) merge(left.tail, right, left.head :: accumulator)
+      else merge(left, right.tail, right.head :: accumulator)
     }
 
-    def mergeSortTailRec(left: RList[S], right: RList[S]): RList[S] = {
-      val leftLength = left.length
-      val rightLength = right.length
-
-      if (leftLength <= 1 && rightLength <= 1) ordering
-
+    /*
+    [3,1,2,5,4] => [[3],[1],[2],[5],[4]]
+    = mst([[3],[1],[2],[5],[4]], [])
+    = mst([[2],[5],[4]], [[1,3]])
+    = mst([[4]], [[1,3], [2,5]])
+    = mst([], [[1,3], [2,5], [4]])
+    = mst([[1,3], [2,5], [4]], [])
+    = mst([[4]], [[1,2,3,5]])
+    = mst([[1,2,3,5], [4]], [])
+    = mst([], [[1,2,3,4,5]])
+    = [1,2,3,4,5]
+     */
+    @tailrec
+    def mergeSortTailrec(small: RList[RList[S]], big: RList[RList[S]]): RList[S] = {
+      if (small.isEmpty) {
+        if (big.isEmpty) RNil
+        else if (big.tail.isEmpty) big.head
+        else mergeSortTailrec(big, RNil)
+      } else if (small.tail.isEmpty) {
+        if (big.isEmpty) small.head
+        else mergeSortTailrec(small.head :: big, RNil)
+      } else {
+        val left = small.head
+        val right = small.tail.head
+        val result = merge(left, right, RNil)
+        mergeSortTailrec(small.tail.tail, result :: big)
+      }
     }
 
-
+    mergeSortTailrec(this.map(_ :: RNil), RNil)
   }
+
+  override def quickSort[S >: T](ordering: Ordering[S]): RList[S] = ???
 }
 
 object RList {
@@ -473,10 +556,11 @@ object RList {
 
 object ListProblems extends App {
 
-  val aSmallList = ::(1, ::(2, ::(3, RNil)))
-  val aLargeList = RList.from(1 to 10000)
-  val unsortedIntList = 5 :: 1 :: 3 :: RNil
-  val unsortedStringList = "three" :: "five" :: "one" :: RNil
+  val aSmallList: RList[Int] = ::(1, ::(2, ::(3, RNil)))
+  val aLargeList: RList[Int] = RList.from(1 to 10000)
+  val unsortedIntList: RList[Int] = 5 :: 1 :: 3 :: RNil
+  val unsortedStringList: RList[String] = "three" :: "five" :: "one" :: RNil
+  val aLargeRandomList = aLargeList.sample(10000)
 
   def testEasy(): Unit = {
     val aSmallList_2 = 1 :: 2 :: 3 :: RNil // RNil.::(3).::(2).::(1)
@@ -528,9 +612,13 @@ object ListProblems extends App {
     println(s"sorting an Int list given an Ordering[Int] -> ${unsortedIntList.insertionSort(Ordering[Int])}")
     println(s"sorting a random sample from 1 to 10000 -> ${aLargeList.sample(10).insertionSort(Ordering[Int])}")
     println(s"sorting a String list given an Ordering[String] -> ${unsortedStringList.insertionSort(strOrdering)}")
+    println((1::5::3::8::9::2::RNil).mergeSort(Ordering[Int]))
+
+    val time = System.currentTimeMillis()
+    aLargeRandomList.mergeSort(Ordering[Int])
+    val duration = System.currentTimeMillis() - time
+    println(s" time to sort a large random list $duration")
   }
   testHard()
-
-
 
 }
